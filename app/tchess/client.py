@@ -25,3 +25,28 @@ class TchessClient:
             json={"move": move},
             timeout=self.timeout,
         )
+
+    def reload_engine(self) -> dict:
+        """请求 TCHESS 重新加载默认引擎，返回响应 JSON。"""
+        resp = requests.post(
+            self.base_url + "/api/engine/load",
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def sync_board(self) -> dict:
+        """请求 TCHESS 以外部真实盘面为准同步引擎盘面。
+
+        同步涉及截图识别，可能耗时数秒，故使用更长超时。
+        """
+        resp = requests.post(
+            self.base_url + "/api/sync",
+            timeout=max(self.timeout, 15.0),
+        )
+        # 不同步/失败时 TCHESS 可能返回 500，仍把 JSON 交给调用方判断
+        try:
+            return resp.json()
+        except ValueError:
+            resp.raise_for_status()
+            return {"ok": False}

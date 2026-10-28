@@ -58,25 +58,34 @@ class GameState:
     red_to_move: bool = True
     side_to_move: str = "red"
     is_reverse: bool = False
+    my_side: str = "red"          # 己方执子：isReverse=true 为黑，false 为红
+    my_turn: bool = True           # 是否轮到己方走子
     board: List[List[str]] = field(default_factory=list)
     engine_loaded: bool = False
     engine_name: str = ""
     move_diagnostics: str = ""
+    in_sync: bool = True
     analysis_mode: bool = False
     thinking: bool = False
     analysis: Analysis = field(default_factory=Analysis)
 
     @classmethod
     def from_dict(cls, d: dict) -> "GameState":
+        is_reverse = bool(d.get("isReverse", False))
+        side_to_move = d.get("sideToMove", "red")
+        my_side = "black" if is_reverse else "red"
         return cls(
             fen=d.get("fen", ""),
             red_to_move=bool(d.get("redToMove", True)),
-            side_to_move=d.get("sideToMove", "red"),
-            is_reverse=bool(d.get("isReverse", False)),
+            side_to_move=side_to_move,
+            is_reverse=is_reverse,
+            my_side=my_side,
+            my_turn=(side_to_move == my_side),
             board=[list(row) for row in (d.get("board") or [])],
             engine_loaded=bool(d.get("engineLoaded", False)),
             engine_name=d.get("engineName", ""),
             move_diagnostics=d.get("moveDiagnostics", ""),
+            in_sync=bool(d.get("inSync", True)),
             analysis_mode=bool(d.get("analysisMode", False)),
             thinking=bool(d.get("thinking", False)),
             analysis=Analysis.from_dict(d.get("analysis")),

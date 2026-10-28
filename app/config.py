@@ -14,6 +14,9 @@ class Config:
     # 轮询间隔（秒），后续主循环使用
     POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "0.5") or "0.5")
 
+    # 模板改动自动重载（开发期，避免改了页面不生效）
+    TEMPLATES_AUTO_RELOAD = True
+
     # 目录
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     AUDIO_DIR = os.environ.get("AUDIO_DIR", os.path.join(BASE_DIR, "audio"))

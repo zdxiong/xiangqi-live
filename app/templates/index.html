@@ -43,11 +43,23 @@
   .manual input { flex: 1; padding: 9px 10px; border: 1px solid #cfd6dd; border-radius: 8px; font-size: 14px; }
   .manual button { width: 72px; border: none; border-radius: 8px; background: #34495e; color: #fff;
       cursor: pointer; font-size: 14px; }
+  .manual button:disabled { opacity: .5; cursor: not-allowed; }
   .opmsg { min-height: 20px; margin-top: 10px; font-size: 13px; text-align: center; }
   .opmsg.ok { color: #27ae60; }
   .opmsg.fail { color: #c0392b; }
   .err-banner { background: #fdecea; color: #c0392b; border-radius: 8px; padding: 10px 14px;
       font-size: 14px; font-weight: 600; display: none; }
+  .mini-btn { border: none; border-radius: 6px; padding: 8px; width: 100%; font-size: 13px;
+      cursor: pointer; color: #fff; background: #34495e; margin-top: 6px; }
+  .mini-btn:hover { background: #2c3e50; }
+  .mini-btn:disabled { opacity: .6; cursor: wait; }
+  .watch-msg { font-size: 12px; color: #8a6a34; margin-top: 6px; text-align: center; min-height: 16px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-row .mini-btn { flex: 1; margin-top: 0; }
+  .sync-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+      background: #27ae60; margin-right: 6px; vertical-align: middle; }
+  .sync-dot.off { background: #c0392b; }
+  #syncTxt { vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -67,12 +79,19 @@
       <div class="card">
         <h3>对局状态</h3>
         <div class="row"><span>引擎</span><span class="v" id="engine">-</span></div>
+        <div class="row"><span>我方</span><span class="v" id="myside">-</span></div>
         <div class="row"><span>行棋方</span><span class="v" id="side">-</span></div>
+        <div class="row"><span>盘面</span><span class="v"><span class="sync-dot" id="syncDot"></span><span id="syncTxt">-</span></span></div>
         <div class="row"><span>分析模式</span><span class="v"><span class="tag" id="amode">-</span></span></div>
         <div class="row"><span>思考中</span><span class="v"><span class="tag" id="thinking">-</span></span></div>
         <div class="row" style="align-items:flex-start"><span>FEN</span>
           <div class="fixed-box fen-box" id="fen" style="height:auto;min-height:20px;max-height:64px">-</div>
         </div>
+        <div class="btn-row">
+          <button class="mini-btn" id="engineReload">重新加载引擎</button>
+          <button class="mini-btn" id="syncBtn">同步盘面</button>
+        </div>
+        <div class="watch-msg" id="watchmsg">-</div>
       </div>
 
       <div class="card">
@@ -119,7 +138,7 @@ function firstCn(moveCn) {
   return (moveCn.split(/[\s　]+/).filter(Boolean)[0]) || '';
 }
 
-function renderBoard(board) {
+function renderBoard(board, reverse) {
   const W = M * 2 + 8 * S, H = M * 2 + 9 * S;
   let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
   s += `<rect x="0" y="0" width="${W}" height="${H}" fill="#f2dcae"/>`;
@@ -145,17 +164,21 @@ function renderBoard(board) {
   s += `<line x1="${X(5)}" y1="${Y(0)}" x2="${X(3)}" y2="${Y(2)}" stroke="#8a6a34" stroke-width="1.4"/>`;
   s += `<line x1="${X(3)}" y1="${Y(7)}" x2="${X(5)}" y2="${Y(9)}" stroke="#8a6a34" stroke-width="1.4"/>`;
   s += `<line x1="${X(5)}" y1="${Y(7)}" x2="${X(3)}" y2="${Y(9)}" stroke="#8a6a34" stroke-width="1.4"/>`;
-  // 河界文字
+  // 河界文字（翻转时左右互换，保持文字正立可读）
   const ry = (Y(4) + Y(5)) / 2;
-  s += `<text x="${X(1)}" y="${ry + 8}" font-size="22" font-weight="bold" fill="#8a6a34" letter-spacing="10">楚河</text>`;
-  s += `<text x="${X(7)}" y="${ry + 8}" font-size="22" font-weight="bold" fill="#8a6a34" letter-spacing="10" text-anchor="end">漢界</text>`;
+  const leftWord = reverse ? '漢界' : '楚河';
+  const rightWord = reverse ? '楚河' : '漢界';
+  s += `<text x="${X(1)}" y="${ry + 8}" font-size="22" font-weight="bold" fill="#8a6a34" letter-spacing="10">${leftWord}</text>`;
+  s += `<text x="${X(7)}" y="${ry + 8}" font-size="22" font-weight="bold" fill="#8a6a34" letter-spacing="10" text-anchor="end">${rightWord}</text>`;
 
-  // 棋子（交叉点）
+  // 棋子（交叉点）；reverse 时标准坐标映射到旋转 180° 后的显示位置
   for (let y = 0; y < 10; y++) {
     for (let x = 0; x < 9; x++) {
       const ch = board[y][x];
       if (ch && ch !== ' ') {
-        const cx = X(x), cy = Y(y);
+        const dx = reverse ? 8 - x : x;
+        const dy = reverse ? 9 - y : y;
+        const cx = X(dx), cy = Y(dy);
         const color = (ch >= 'A' && ch <= 'Z') ? '#c0392b' : '#1a1a1a';
         s += `<circle cx="${cx}" cy="${cy}" r="${PR}" fill="url(#pieceGrad)" stroke="#c19a5b" stroke-width="1.5"/>`;
         s += `<text x="${cx}" y="${cy + 8}" text-anchor="middle" font-size="23" font-weight="bold" fill="${color}">${NAMES[ch] || ch}</text>`;
@@ -180,8 +203,10 @@ function setOp(ok, text) {
 
 async function play(move) {
   if (!move) { setOp(false, '没有可走的着法'); return; }
-  document.getElementById('playBtn').disabled = true;
+  const btn = document.getElementById('playBtn');
+  btn.disabled = true;
   setOp(true, '走子请求中…');
+  let failed = false;
   try {
     const r = await fetch('/api/play', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -189,11 +214,12 @@ async function play(move) {
     });
     const d = await r.json();
     if (d.ok) { setOp(true, '走子成功：' + (d.move || move)); }
-    else { setOp(false, '走子失败：' + (d.error || r.status)); }
+    else { setOp(false, '走子失败：' + (d.error || r.status)); failed = true; }
   } catch (e) {
     setOp(false, '请求失败：' + e.message);
+    failed = true;
   }
-  document.getElementById('playBtn').disabled = false;
+  if (failed) btn.disabled = false;  // 成功时按钮状态由 refresh 按回合决定
   refresh();
 }
 
@@ -205,15 +231,24 @@ async function refresh() {
     document.getElementById('err').style.display = 'none';
     document.getElementById('headDot').className = 'dot';
 
-    renderBoard(d.board || []);
-    document.getElementById('engine').textContent =
+    renderBoard(d.board || [], d.is_reverse);
+    const engEl = document.getElementById('engine');
+    engEl.textContent =
       (d.engine_name || '-') + (d.engine_loaded ? '（已加载）' : '（未加载）');
+    engEl.style.color = d.engine_loaded ? '' : '#c0392b';
+    document.getElementById('watchmsg').textContent = d.engineWatch || '';
+    const syncDot = document.getElementById('syncDot');
+    syncDot.className = 'sync-dot' + (d.in_sync ? '' : ' off');
+    document.getElementById('syncTxt').textContent = d.in_sync ? '一致' : '不一致';
+    document.getElementById('myside').textContent = d.my_side === 'red' ? '红方' : '黑方';
     document.getElementById('side').textContent = d.side_to_move === 'red' ? '红方' : '黑方';
     setTag('amode', d.analysis_mode, d.analysis_mode ? '开启' : '关闭');
     setTag('thinking', d.thinking, d.thinking ? '是' : '否');
     document.getElementById('fen').textContent = d.fen;
 
-    currentBest = d.analysis && d.analysis.best;
+    // 仅在己方回合取推荐；对方回合（含等待对方）推荐为空
+    currentBest = (d.my_turn && d.analysis) ? d.analysis.best : null;
+    const manualBtn = document.getElementById('manualBtn');
     if (currentBest) {
       document.getElementById('bestmove').textContent = currentBest.best_move || '-';
       document.getElementById('bestcn').textContent = currentBest.move_cn || '-';
@@ -223,10 +258,13 @@ async function refresh() {
       const cn = firstCn(currentBest.move_cn) || currentBest.best_move;
       document.getElementById('playBtn').textContent = '走推荐着法（' + cn + '）';
       document.getElementById('playBtn').disabled = !!d.thinking;
+      manualBtn.disabled = !!d.thinking;
     } else {
       ['bestmove','bestcn','score','mate','pv'].forEach(id => document.getElementById(id).textContent = '-');
-      document.getElementById('playBtn').textContent = '走推荐着法';
+      document.getElementById('playBtn').textContent =
+        d.my_turn ? '走推荐着法' : '等待对方走子…';
       document.getElementById('playBtn').disabled = true;
+      manualBtn.disabled = true;
     }
   } catch (e) {
     const el = document.getElementById('err');
@@ -236,6 +274,40 @@ async function refresh() {
     document.getElementById('playBtn').disabled = true;
   }
 }
+
+document.getElementById('engineReload').addEventListener('click', async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  btn.textContent = '加载中…';
+  try {
+    const r = await fetch('/api/engine/reload', {method: 'POST'});
+    const d = await r.json();
+    document.getElementById('watchmsg').textContent =
+      d.ok ? '引擎加载成功' : ('加载失败：' + (d.error || ''));
+  } catch (err) {
+    document.getElementById('watchmsg').textContent = '请求失败：' + err.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '重新加载引擎';
+  refresh();
+});
+
+document.getElementById('syncBtn').addEventListener('click', async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  btn.textContent = '同步中…';
+  try {
+    const r = await fetch('/api/sync', {method: 'POST'});
+    const d = await r.json();
+    document.getElementById('watchmsg').textContent =
+      d.ok ? '盘面已同步' : ('同步失败：' + (d.error || ''));
+  } catch (err) {
+    document.getElementById('watchmsg').textContent = '请求失败：' + err.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '同步盘面';
+  refresh();
+});
 
 document.getElementById('playBtn').addEventListener('click', () => play(currentBest && currentBest.best_move));
 document.getElementById('manualBtn').addEventListener('click', () =>
