@@ -124,10 +124,10 @@ place(sb, 0, 4, "r")  # 黑车中路将军
 place(sb, 6, 2, "P")  # 红兵，走哪都解不了
 check("被将军时无关棋子无合法走法", R.legal_moves(sb, 6, 2) == [])
 
-# 12. 着法字符串往返
-m = B.coords_to_move(0, 1, 2, 2)
-check("坐标转着法 b0c2", m == "b0c2", m)
-check("着法解析 b0c2", B.parse_move("b0c2") == (0, 1, 2, 2))
+# 12. 着法字符串往返（UCI rank 从红方底线起算：rank=9-y）
+m = B.coords_to_move(9, 1, 7, 2)
+check("坐标转着法 b0c2（rank=9-y）", m == "b0c2", m)
+check("着法解析 b0c2", B.parse_move("b0c2") == (9, 1, 7, 2))
 
 # 13. 子力价值
 check("车价值高于马", P.material_value("R") > P.material_value("N"))

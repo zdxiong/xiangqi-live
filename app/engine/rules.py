@@ -1,14 +1,15 @@
-"""中国象棋走法规则与攻击关系判断。
+"""中国象棋走法规则、攻击关系判断。
 
 规则严格对应 Java 端 XiangqiUtils.canGo / isJiang：
     can_move 为“伪合法”（不考虑送将、将帅照面）；
     legal_moves 在其基础上过滤走完后己方仍被将军的走法。
+战术意图分析见 app/engine/intents.py。
 """
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .board import (
-    ROWS, COLS, Point, apply_move, clone_board, coords_to_move,
-    find_king, in_bounds, list_pieces,
+    ROWS, COLS, Point, apply_move, coords_to_move,
+    find_king, list_pieces,
 )
 from .pieces import EMPTY, is_red
 

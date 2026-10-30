@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, render_template, request
 from app.tchess.client import TchessClient
 from app.tchess.models import Analysis
 from app.tchess.engine_watch import EngineWatchdog
+from app.engine.intents import analyze_intent
 
 bp = Blueprint("api", __name__)
 
@@ -34,10 +35,24 @@ def api_state():
     try:
         state = TchessClient().get_state()
         state = watchdog.ensure(state)  # 引擎未加载则自动重载（节流）
+
+        # 己方回合：基于当前棋盘与推荐着法计算结构化战术意图
+        intent = None
+        best = state.analysis.best if state.analysis else None
+        if state.my_turn and best and best.best_move:
+            intent = analyze_intent(
+                state.board,
+                best.best_move,
+                fen=state.fen,
+                move_cn=best.move_cn,
+                pv_preview=(best.moves or [])[:3],
+            ).to_dict()
+
         if not state.my_turn:
             state.analysis = Analysis()
         data = asdict(state)
         data["engineWatch"] = watchdog.last_message
+        data["intent"] = intent
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": f"无法连接 TCHESS: {e}"}), 502

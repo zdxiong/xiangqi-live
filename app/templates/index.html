@@ -60,6 +60,37 @@
       background: #27ae60; margin-right: 6px; vertical-align: middle; }
   .sync-dot.off { background: #c0392b; }
   #syncTxt { vertical-align: middle; }
+
+  /* 战术意图卡片 */
+  .intent-head { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  .ictag { display:inline-block; padding:3px 10px; border-radius:10px; font-size:12px; color:#fff; font-weight:600; }
+  .ictag.phase { background:#7a8794; }
+  .ictag.opening-badge { background:#b8860b; }
+  .intent-primary { font-size:18px; font-weight:bold; color:#2c3e50; margin:4px 0 2px; }
+  .intent-detail { font-size:13px; color:#555; margin-bottom:8px; line-height:1.5; }
+  .intent-meta { font-size:12.5px; color:#666; margin:3px 0; }
+  .reason-list { list-style:none; margin:8px 0 0; padding:8px 0 0; border-top:1px dashed #d5dce2; }
+  .reason-list li { font-size:12.5px; color:#444; line-height:1.6; padding-left:14px; position:relative; }
+  .reason-list li::before { content:''; position:absolute; left:2px; top:8px; width:5px; height:5px; border-radius:50%; background:#95a5a6; }
+  .hist-empty { font-size:12.5px; color:#999; padding:6px 0; }
+
+  /* 盘面事实快照 */
+  .fact-wrap { margin-top:10px; border-top:1px dashed #d5dce2; padding-top:8px; }
+  .fact-title { font-size:12px; color:#7a8794; font-weight:600; margin:2px 0 6px; }
+  .fact-change { font-size:12.5px; margin-bottom:4px; color:#444; line-height:1.5; }
+  .fact-stage { font-size:11px; color:#95a5a6; margin:7px 0 3px; }
+  .fact-grid { display:grid; grid-template-columns:34px repeat(4,1fr); gap:4px; }
+  .fact-grid .fg-head { color:#95a5a6; text-align:center; font-size:10.5px; }
+  .fact-grid .fg-side { font-weight:bold; color:#2c3e50; font-size:11px; align-self:center; }
+  .fact-grid .fg-cell { text-align:center; background:#f4f6f8; border-radius:6px; padding:3px 2px; font-size:11px; color:#333; }
+  .fact-grid .fg-cell.warn { background:#fdecea; color:#c0392b; font-weight:600; }
+
+  /* 意图历史 */
+  .hist-list { list-style:none; margin:0; padding:0; }
+  .hist-list li { display:flex; gap:8px; align-items:center; font-size:12.5px; padding:5px 0; border-bottom:1px solid #eee; }
+  .hist-list .hmove { font-family:Consolas,monospace; font-weight:bold; color:#2c3e50; min-width:52px; }
+  .hist-list .hlabel { flex:1; color:#444; }
+  .hist-list .hdot { width:8px; height:8px; border-radius:50%; flex:none; }
 </style>
 </head>
 <body>
@@ -103,6 +134,13 @@
       </div>
 
       <div class="card">
+        <h3>战术意图</h3>
+        <div id="intentBox">
+          <div class="hist-empty">等待己方回合计算意图…</div>
+        </div>
+      </div>
+
+      <div class="card">
         <h3>走子操作</h3>
         <button class="btn" id="playBtn">走推荐着法</button>
         <div class="manual">
@@ -116,6 +154,13 @@
         <h3>主变</h3>
         <div class="fixed-box" id="pv">-</div>
       </div>
+
+      <div class="card">
+        <h3>意图历史（最近 10 步）</h3>
+        <ul class="hist-list" id="intentHist">
+          <li class="hist-empty">暂无记录</li>
+        </ul>
+      </div>
     </div>
   </div>
 
@@ -125,6 +170,104 @@ const NAMES = {
   k: '将', a: '士', b: '象', n: '马', r: '车', c: '炮', p: '卒'
 };
 let currentBest = null;
+
+/* 大类配色（categoryCode -> 颜色） */
+const CAT_COLORS = {
+  mate: '#c0392b', defense: '#2980b9', capture: '#d35400',
+  threat: '#8e44ad', position: '#16a085', development: '#7f8c8d', invalid: '#555'
+};
+let intentHistory = [];
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function renderFacts(facts) {
+  if (!facts) return '';
+  const cols = [
+    ['inCheck', '将军'], ['legalMoveCount', '走法'], ['unrooted', '无根'],
+    ['attacked', '被抓'],
+  ];
+  let s = '<div class="fact-wrap"><div class="fact-title">盘面客观事实（走前 → 走后）</div>';
+  const ch = facts.change || {};
+  s += '<div class="fact-change">吃子对比：';
+  if (ch.captured) {
+    s += `少子，被吃 ${esc(ch.captured_name)}（${esc(ch.captured_pos)}，${ch.captured_side === 'red' ? '红' : '黑'}方）`;
+  } else {
+    s += `无吃子（棋子数 ${ch.before_count}→${ch.after_count}）`;
+  }
+  s += '</div>';
+  for (const [stageKey, stageCn] of [['before', '走前'], ['after', '走后']]) {
+    s += `<div class="fact-stage">${stageCn}</div><div class="fact-grid"><div></div>`;
+    for (const c of cols) s += `<div class="fg-head">${c[1]}</div>`;
+    for (const [sideKey, sideCn] of [['red', '红'], ['black', '黑']]) {
+      const b = facts[stageKey][sideKey];
+      s += `<div class="fg-side">${sideCn}</div>`;
+      for (const [key] of cols) {
+        const v = b[key];
+        const n = Array.isArray(v) ? v.length : (v ? '是' : '否');
+        const warn = (key === 'inCheck' && v) || (Array.isArray(v) && v.length);
+        s += `<div class="fg-cell ${warn ? 'warn' : ''}">${esc(String(n))}</div>`;
+      }
+    }
+    s += '</div>';
+  }
+  s += '</div>';
+  return s;
+}
+
+function renderIntent(it) {
+  const box = document.getElementById('intentBox');
+  if (!it) {
+    box.innerHTML = '<div class="hist-empty">对方回合或暂无推荐，意图仅在己方回合计算</div>';
+    return;
+  }
+  const color = CAT_COLORS[it.categoryCode] || '#7f8c8d';
+  let s = '<div class="intent-head">';
+  s += `<span class="ictag" style="background:${color}">${esc(it.categoryCn)}</span>`;
+  s += `<span class="ictag phase">${esc(it.phaseCn)}</span>`;
+  if (it.openingCn) s += `<span class="ictag opening-badge">开局·${esc(it.openingCn)}</span>`;
+  s += '</div>';
+  s += `<div class="intent-primary">${esc(it.primaryCn)}</div>`;
+  s += `<div class="intent-detail">${esc(it.primaryDetail)}</div>`;
+  s += `<div class="intent-meta">着法：${esc(it.move)}（${esc(it.pieceCn)} ${esc(it.fromPos)}→${esc(it.toPos)}）</div>`;
+  if (it.moveVerb) s += `<div class="intent-meta">中文叫法：${esc(it.moveVerb)}</div>`;
+  if (it.capturedCn) s += `<div class="intent-meta">吃子：${esc(it.capturedCn)}</div>`;
+  if (it.reasons && it.reasons.length) {
+    s += '<ul class="reason-list">';
+    for (const r of it.reasons) s += `<li>${esc(r)}</li>`;
+    s += '</ul>';
+  }
+  s += renderFacts(it.facts);
+  box.innerHTML = s;
+}
+
+function pushHistory(d) {
+  if (!d.intent) return;
+  const sig = d.fen + '|' + d.intent.move;
+  if (intentHistory.length && intentHistory[0].sig === sig) return;
+  intentHistory.unshift({sig, intent: d.intent});
+  if (intentHistory.length > 10) intentHistory.length = 10;
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('intentHist');
+  if (!intentHistory.length) {
+    el.innerHTML = '<li class="hist-empty">暂无记录</li>';
+    return;
+  }
+  let s = '';
+  for (const h of intentHistory) {
+    const it = h.intent;
+    const color = CAT_COLORS[it.categoryCode] || '#7f8c8d';
+    s += `<li><span class="hdot" style="background:${color}"></span>`
+       + `<span class="hmove">${esc(it.move)}</span>`
+       + `<span class="hlabel">${esc(it.primaryCn)}</span></li>`;
+  }
+  el.innerHTML = s;
+}
 
 /* 棋盘几何：棋子在交叉点（9 列 x 10 行） */
 const M = 30;      // 边距
@@ -232,6 +375,7 @@ async function refresh() {
     document.getElementById('headDot').className = 'dot';
 
     renderBoard(d.board || [], d.is_reverse);
+    renderIntent(d.intent);
     const engEl = document.getElementById('engine');
     engEl.textContent =
       (d.engine_name || '-') + (d.engine_loaded ? '（已加载）' : '（未加载）');
@@ -266,6 +410,7 @@ async function refresh() {
       document.getElementById('playBtn').disabled = true;
       manualBtn.disabled = true;
     }
+    pushHistory(d);
   } catch (e) {
     const el = document.getElementById('err');
     el.style.display = 'block';

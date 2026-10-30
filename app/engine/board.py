@@ -3,6 +3,8 @@
 坐标约定：
     board[y][x]，y 为行（0=黑方底线 … 9=红方底线），x 为列（0…8）。
     着法字符串形如 "b0c2"：列字母(a-i) + 行数字(0-9)，前两位为起点、后两位为终点。
+    着法字符串遵循 UCI 编号：rank 从红方底线起算，与棋盘视觉行方向相反，
+    故 y = 9 - rank、rank = 9 - y（file 与 x 同向）。
 """
 from typing import List, Optional, Tuple
 
@@ -32,18 +34,24 @@ def clone_board(board: List[List[str]]) -> List[List[str]]:
 
 
 def coords_to_move(fy: int, fx: int, ty: int, tx: int) -> str:
-    """坐标 -> 着法字符串，如 (0,1,2,2) -> 'b0c2'。"""
-    return f"{chr(ord('a') + fx)}{fy}{chr(ord('a') + tx)}{ty}"
+    """坐标 -> 着法字符串，如 (9,1,7,2) -> 'b0c2'。
+
+    UCI rank 从红方底线起算：rank = 9 - y。
+    """
+    return f"{chr(ord('a') + fx)}{9 - fy}{chr(ord('a') + tx)}{9 - ty}"
 
 
 def parse_move(move: str) -> MoveCoords:
-    """着法字符串 -> (fy, fx, ty, tx)。"""
+    """着法字符串 -> (fy, fx, ty, tx)。
+
+    UCI rank 从红方底线起算，棋盘视觉行 y = 9 - rank。
+    """
     if not move or len(move) < 4:
         raise ValueError(f"非法着法: {move!r}")
     fx = ord(move[0]) - ord("a")
-    fy = int(move[1])
+    fy = 9 - int(move[1])
     tx = ord(move[2]) - ord("a")
-    ty = int(move[3])
+    ty = 9 - int(move[3])
     if not (0 <= fx < COLS and 0 <= tx < COLS and 0 <= fy < ROWS and 0 <= ty < ROWS):
         raise ValueError(f"着法越界: {move!r}")
     return fy, fx, ty, tx
